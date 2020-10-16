@@ -46,21 +46,76 @@ namespace SimplogApi.Controllers
             return Ok(employee);
         }
 
+        // TODO: check image size.
         // PUT: api/Employees/5
         [HttpPut("{id}")]
-        public async Task<IActionResult> PutEmployee([FromRoute] Guid id, [FromBody] Employee employee)
+        public async Task<IActionResult> PutEmployee([FromRoute] Guid id, [FromBody] Employee newEmployee)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
 
-            if (id != employee.EmployeeId)
+            if (id != newEmployee.EmployeeId)
             {
                 return BadRequest();
             }
 
-            _context.Entry(employee).State = EntityState.Modified;
+            // Check if employee's email or code has been changed.
+            var employee = await _context.Employees.FindAsync(id);
+            if (employee == null)
+            {
+                // No employee with ID was found.
+                return Ok(new { isSuccess = false, status = "Employee's ID was not found" });
+            }
+            else if (CompareEmployee(employee, newEmployee))
+            {
+                return Ok(new { isSuccess = true, status = "Nothing has changed" });
+            }
+            else
+            {
+                // Check employee.Email and employee.Code if any of them has already existed.
+                // Can't use EmployeeEmailOrCodeExists, because when only Code has changed and Email hasn't,
+                // this method may return that Email has already existed.
+                var errorMessage = string.Empty;
+                if (employee.Email != newEmployee.Email)
+                {
+                    // New Employee's email has changed, check if it' existed.
+                    if (await EmployeeEmailExists(newEmployee.Email))
+                    {
+                        errorMessage += "Email";
+                    }
+                }
+                if (employee.Code != newEmployee.Code)
+                {
+                    if (await EmployeeCodeExists(newEmployee.Code))
+                    {
+                        if (string.IsNullOrEmpty(errorMessage))
+                        {
+                            errorMessage += "Code has already existed";
+                        }
+                        else
+                        {
+                            // Email and code are existed.
+                            errorMessage += " and code have already existed";
+                        }
+                        return Ok(new { isSuccess = false, status = errorMessage });
+                    }
+                }
+                
+                if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    // Employee's code is unchanged, but errorMessage is not null or empty,
+                    // which means employee's email has changed and already existed.
+                    errorMessage += " has already existed";
+                    return Ok(new { isSuccess = false, status = errorMessage });
+                }
+            }
+
+            // Update employee.
+            CopyEmployee(ref employee, newEmployee);
+
+            //_context.Entry(employee).State = EntityState.Modified;
 
             try
             {
@@ -78,16 +133,23 @@ namespace SimplogApi.Controllers
                 }
             }
 
-            return NoContent();
+            return Ok(new { isSuccess = true });
         }
 
-        // POST: api/Employees
+        // POST: api/Employees/
         [HttpPost]
         public async Task<IActionResult> PostEmployee([FromBody] Employee employee)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
+            }
+
+            // Check employee.Email and employee.Code if they have already existed.
+            var errorMessage = await EmployeeEmailOrCodeExists(employee);
+            if (!string.IsNullOrEmpty(errorMessage))
+            {
+                return Ok(new { isSuccess = false, status = errorMessage });
             }
 
             employee.EmployeeId = new Guid();
@@ -122,6 +184,70 @@ namespace SimplogApi.Controllers
         private bool EmployeeExists(Guid id)
         {
             return _context.Employees.Any(e => e.EmployeeId == id);
+        }
+
+        private async Task<string> EmployeeEmailOrCodeExists(Employee employee)
+        {
+            var errorMessage = string.Empty;
+            if (await EmployeeEmailExists(employee.Email))
+            {
+                errorMessage = "Employee's email";
+            }
+            if (await EmployeeCodeExists(employee.Code))
+            {
+                if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    errorMessage += " and code have";
+                }
+                else
+                {
+                    errorMessage += "Employee's code has";
+                }
+            }
+            else if (!string.IsNullOrEmpty(errorMessage))
+            {
+                errorMessage += " has";
+            }
+
+            // If errorMessage is not null or empty, return the errors.
+            if (!string.IsNullOrEmpty(errorMessage))
+            {
+                //  Employee's email has already existed
+                //  Employee's email and code have already existed
+                //  Employee's code has already existed.
+                errorMessage += " already existed";
+            }
+
+            return errorMessage;
+        }
+
+        private async Task<bool> EmployeeEmailExists(string email)
+        {
+            return await _context.Employees.AnyAsync(emp => emp.Email == email);
+        }
+
+        private async Task<bool> EmployeeCodeExists(int code)
+        {
+            return await _context.Employees.AnyAsync(emp => emp.Code == code);
+        }
+
+        private void CopyEmployee(ref Employee dst, Employee src)
+        {
+            dst.Name = src.Name;
+            dst.Email = src.Email;
+            dst.Image = src.Image;
+            dst.TaxCode = src.TaxCode;
+            dst.Code = src.Code;
+        }
+
+        private bool CompareEmployee(Employee left, Employee right)
+        {
+            return left.Email == right.Email
+                && left.TaxCode == right.TaxCode
+                && left.Name == right.Name
+                && left.Code == right.Code
+                && left.Image == right.Image
+                && left.EmployeeId == right.EmployeeId;
         }
     }
 }
