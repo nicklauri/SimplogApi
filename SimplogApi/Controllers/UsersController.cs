@@ -1,9 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
+using System.Security.Claims;
+using System.Text;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.IdentityModel.Tokens;
 using SimplogApi.Models;
 
 namespace SimplogApi.Controllers
@@ -13,10 +19,12 @@ namespace SimplogApi.Controllers
     public class UsersController : ControllerBase
     {
         private readonly SimplogContext _context;
+        private readonly IConfiguration _config;
 
-        public UsersController(SimplogContext context)
+        public UsersController(SimplogContext context, IConfiguration config)
         {
             _context = context;
+            _config = config;
         }
 
         // Debug-purposed route.
@@ -60,86 +68,86 @@ namespace SimplogApi.Controllers
         // Returns:
         //  ID: if username and password are matched in the database.
         //  0 : if nothing is matched, the ID column in the Users table starts at 1.
-        // POST: api/Users
-        [HttpPost]
-        public async Task<IActionResult> Login([FromForm] string username, [FromForm] string password)
+        // POST: api/Users/Login
+        [HttpPost("Login")]
+        public async Task<IActionResult> Login([FromBody] User userInfo)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
-            // Probably don't need this since FindAsync returns null if either username or password is null.
-            // else if (username == null || password == null)
-            // {
-            //     return BadRequest("Missing user info");
-            // }
 
-            // Console.WriteLine($"---\n{username} :: {password}\n---");
-
-            var matchedUser = await FindAsync(username, password);
+            var matchedUser = await FindAsync(userInfo.Username, userInfo.Password);
             if (matchedUser != null)
             {
-                return Ok(matchedUser.Id);
+                // TODO: generate JSON Web Token and return to client.
+                return Ok(new { isSusccess = true, userId = matchedUser.Id, token = GenerateJSONWebToken(matchedUser) }) ;
             }
             else
             {
-                return Ok(-1);
+                return Ok(new { isSuccess = false, status = "Wrong username or password" });
             }
 
         }
 
+        [Authorize]
+        [HttpPost("Verify")]
+        public IActionResult Verify()
+        {
+            var identity = HttpContext.User.Identity as ClaimsIdentity;
+            IList<Claim> claim = identity.Claims.ToList();
+            var username = claim[0].Value;  // others are GUID, issuer,...
+
+            return Ok(new { status = $"Username `{username}` is authorized." });
+        }
+
         // Register new user.
-        // PUT: api/Users/
-        [HttpPut]
-        public async Task<IActionResult> RegisterUser([FromForm] string username, [FromForm] string password)
+        // POST: api/Users/Register
+        [HttpPost("Register")]
+        public async Task<IActionResult> RegisterUser([FromBody] User userInfo)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
 
-            if (await UserExists(username))
+            if (await UserExists(userInfo.Username))
             {
                 // Username is already existed.
-                return Ok(-1);
+                return Ok(new { isSuccess = false, status = "Username has already existed" } );
             }
             else
             {
                 // Register new user.
                 // TODO: password should be hashed.
-                var newUser = await _context.Users.AddAsync(new Models.User
-                {
-                    Id = 0,
-                    Username = username,
-                    Password = password,
-                });
+                var newUser = await _context.Users.AddAsync(userInfo);
 
                 // Save it.
                 await _context.SaveChangesAsync();
-                return Ok(newUser.Entity.Id);
+                return Ok(new { isSuccess = true, userId = newUser.Entity.Id });
             }
         }
 
         // Delete a user from database, need username and password matched with a record in the database.
         // DELETE: api/Users/
         [HttpDelete]
-        public async Task<IActionResult> DeleteUser([FromForm] string username, [FromForm] string password)
+        public async Task<IActionResult> DeleteUser([FromBody] User userInfo)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
 
-            var user = await FindAsync(username, password);
+            var user = await FindAsync(userInfo.Username, userInfo.Password);
             if (user == null)
             {
-                return NotFound(-1);
+                return NotFound(new { isSuccess = false, status = "Can't delete because of wrong username or password" });
             }
 
             _context.Users.Remove(user);
             await _context.SaveChangesAsync();
 
-            return Ok(user.Id);
+            return Ok(new { isSuccess = true, username = user.Username, userId = user.Id });
         }
 
         // Find a user record asynchronously.
@@ -147,10 +155,10 @@ namespace SimplogApi.Controllers
         {
             try
             {
-                // FirstAsync will either return a valid value or throw an exception (not found or args are null).
-                return await _context.Users.FirstAsync(user => user.Username == username && user.Password == password);
+                // FirstOrDefaultAsync returns either user or null.
+                return await _context.Users.FirstOrDefaultAsync(user => user.Username == username && user.Password == password);
             }
-            catch (InvalidOperationException)
+            catch (ArgumentNullException)
             {
                 return null;
             }
@@ -159,6 +167,32 @@ namespace SimplogApi.Controllers
         private async Task<bool> UserExists(string username)
         {
             return await _context.Users.AnyAsync(user => user.Username == username);
+        }
+
+        // Generate JSON Web Token based on user information
+        private string GenerateJSONWebToken(User userInfo)
+        {
+            var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
+            var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+
+            var claims = new[]
+            {
+                new Claim(JwtRegisteredClaimNames.Sub, userInfo.Username),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                // They have email field in the tutorial, but our userInfo doesn't have Email field.
+                // new Claim(JwtRegisteredClaimNames.Email, userInfo.Email),
+            };
+
+            var issuer = _config["Jwt:Issuer"];
+            var token = new JwtSecurityToken(
+                issuer: issuer,
+                audience: issuer,
+                claims,
+                expires: DateTime.Now.AddMinutes(120),
+                signingCredentials: credentials);
+            var encodeToken = new JwtSecurityTokenHandler().WriteToken(token);
+ 
+            return encodeToken;
         }
     }
 }
