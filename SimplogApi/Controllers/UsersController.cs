@@ -90,17 +90,6 @@ namespace SimplogApi.Controllers
 
         }
 
-        [Authorize]
-        [HttpPost("Verify")]
-        public IActionResult Verify()
-        {
-            var identity = HttpContext.User.Identity as ClaimsIdentity;
-            IList<Claim> claim = identity.Claims.ToList();
-            var username = claim[0].Value;  // others are GUID, issuer,...
-
-            return Ok(new { status = $"Username `{username}` is authorized." });
-        }
-
         // Register new user.
         // POST: api/Users/Register
         [HttpPost("Register")]
