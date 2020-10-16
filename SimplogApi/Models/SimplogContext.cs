@@ -12,6 +12,12 @@ namespace SimplogApi.Models
         {
         }
 
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+        }
+
         public DbSet<User> Users { get; set; }
+        public DbSet<Employee> Employees { get; set; }
     }
 }
