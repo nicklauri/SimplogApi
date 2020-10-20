@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -21,14 +23,63 @@ namespace SimplogApi.Controllers
         }
 
         // GET: api/Employees
-        [HttpGet]
+        [Authorize]
+        [HttpGet("All")]
         public IEnumerable<Employee> GetEmployees()
         {
             return _context.Employees;
         }
 
-        // GET: api/Employees/5
-        [HttpGet("{id}")]
+        // GET: api/Employees/?page=3&maxEntries=10
+        [Authorize]
+        [HttpGet]
+        public async Task<IActionResult> GetEmployeesWithPaging(int page = 1, int maxEntries = 5)
+        {
+            if (maxEntries <= 0)
+            {
+                return BadRequest(new { isSuccess = false, status = "maxEntries must not be less or equal to 0" });
+            }
+
+            // maxEntries has already checked, so totalPages is not null.
+            var totalPages = await GetTotalPages(maxEntries);
+
+            // `page` starts at 1, not 0 for human logic.
+            if (page <= 0)
+            {
+                page = 1;
+            }
+            else if (page > totalPages)
+            {
+                return BadRequest(new { isSuccess = false, status = $"page number ({page}) exceeded totalPages ({totalPages})" });
+            }
+
+            // step starts at 0 is for machine logic.
+            var step = page - 1;
+            var data = _context.Employees.Skip(step * maxEntries).Take(maxEntries);
+            return Ok(new { isSuccess = true, totalPages, data });
+        }
+
+        [Authorize]
+        [HttpGet("TotalPages")]
+        public async Task<IActionResult> TotalPages(int maxEntries = 5)
+        {
+            if (maxEntries <= 0)
+            {
+                return BadRequest(new { isSuccess = false, status = "maxEntries shouldn't be less than or equal to 0" });
+            }
+
+            var totalEntries = await _context.Employees.CountAsync();
+
+            // maxEntries is checked <= 0 before calling GetTotalPages,
+            // so the value is not null. (?)
+            var totalPages = await GetTotalPages(maxEntries);
+
+            return Ok(new { isSuccess = true, totalEntries, totalPages, maxEntries});
+        }
+
+        // GET: api/Employees/Id/86a1f89f-6f17-4041-8fa7-08d8718c2bdb
+        [Authorize]
+        [HttpGet("Id/{id}")]
         public async Task<IActionResult> GetEmployee([FromRoute] Guid id)
         {
             if (!ModelState.IsValid)
@@ -40,14 +91,24 @@ namespace SimplogApi.Controllers
 
             if (employee == null)
             {
-                return NotFound();
+                return NotFound(new { isSuccess = false, status = "Not found" });
             }
 
-            return Ok(employee);
+            return Ok(new { isSuccess = true, employee });
+        }
+        
+        // This route is remind me to not forget to put employeeId in the route.
+        // PUT: api/Employees
+        [Authorize]
+        [HttpPut]
+        public IActionResult PutEmployeeWithoutId([FromBody] Employee _)
+        {
+            return Ok(new { isSuccess = false, status = "Employee ID on the URL is required" });
         }
 
         // TODO: check image size.
-        // PUT: api/Employees/5
+        // PUT: api/Employees/86a1f89f-6f17-4041-8fa7-08d8718c2bdb
+        [Authorize]
         [HttpPut("{id}")]
         public async Task<IActionResult> PutEmployee([FromRoute] Guid id, [FromBody] Employee newEmployee)
         {
@@ -137,6 +198,7 @@ namespace SimplogApi.Controllers
         }
 
         // POST: api/Employees/
+        [Authorize]
         [HttpPost]
         public async Task<IActionResult> PostEmployee([FromBody] Employee employee)
         {
@@ -157,10 +219,12 @@ namespace SimplogApi.Controllers
             _context.Employees.Add(employee);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction("GetEmployee", new { id = employee.EmployeeId }, employee);
+            //return CreatedAtAction("GetEmployee", new { id = employee.EmployeeId }, employee);
+            return Ok(new { isSuccess = true, employee });
         }
 
-        // DELETE: api/Employees/5
+        // DELETE: api/Employees/86a1f89f-6f17-4041-8fa7-08d8718c2bdb
+        [Authorize]
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteEmployee([FromRoute] Guid id)
         {
@@ -248,6 +312,42 @@ namespace SimplogApi.Controllers
                 && left.Code == right.Code
                 && left.Image == right.Image
                 && left.EmployeeId == right.EmployeeId;
+        }
+
+        private string GetCurrentUsername()
+        {
+            var identity = HttpContext.User.Identity as ClaimsIdentity;
+            IList<Claim> claim = identity.Claims.ToList();
+            var username = claim[0].Value;  // others are GUID, issuer,...
+
+            return username;
+        }
+
+        private async Task<int?> GetTotalPages(int maxEntries)
+        {
+            // Although maxEntries will be checked first before calling this method.
+            // But I should make sure that maxEntries always be checked.
+            if (maxEntries <= 0)
+            {
+                return null;
+            }
+
+            var totalEntries = await _context.Employees.CountAsync();
+            var totalPages = totalEntries / maxEntries;
+
+            // If totalEntries is smaller, its contents can fit in 1 page.
+            if (maxEntries > totalEntries)
+            {
+                totalPages = 1;
+            }
+            else if (totalEntries % maxEntries != 0)
+            {
+                // If totalEntries is not divisible by maxEntries, which means there is a page
+                // that has fewer entries than a normal page. We should totalPages by 1.
+                totalPages += 1;
+            }
+
+            return totalPages;
         }
     }
 }
