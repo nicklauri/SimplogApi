@@ -1,3 +1,11 @@
 .vs/*
 SimplogApi/obj/*
 SimplogApi/bin/*
+Domain/bin/*
+Domain/obj/*
+Data/bin/*
+Data/obj/*
+Infrastructure/bin/*
+Infrastructure/obj/*
+Service/bin/*
+Service/obj/*

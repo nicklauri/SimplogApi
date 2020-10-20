@@ -4,7 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.ComponentModel.DataAnnotations;
 
-namespace SimplogApi.Models
+namespace Domain
 {
     public class Employee
     {

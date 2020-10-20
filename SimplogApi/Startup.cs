@@ -11,10 +11,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.EntityFrameworkCore;
-using SimplogApi.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Domain;
+using Service.Users;
+using Service.Employees;
 
 namespace SimplogApi
 {
@@ -51,6 +53,8 @@ namespace SimplogApi
                         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Configuration["Jwt:Key"]))
                     };
                 });
+            services.AddScoped<IUsersService, UsersService>();
+            services.AddScoped<IEmployeesService, EmployeesService>();
             services.AddDbContext<SimplogContext>(opt => opt.UseSqlServer(Configuration.GetConnectionString("Database")));
             services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
         }
