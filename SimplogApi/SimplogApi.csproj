@@ -5,6 +5,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Migrations\20201015112543_InitialSimplog.cs" />
+    <Compile Remove="Migrations\20201015112543_InitialSimplog.Designer.cs" />
+    <Compile Remove="Migrations\20201015130606_Employees.cs" />
+    <Compile Remove="Migrations\20201015130606_Employees.Designer.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Migrations\" />
     <Folder Include="wwwroot\" />
   </ItemGroup>
 
