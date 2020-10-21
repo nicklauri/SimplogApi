@@ -9,13 +9,15 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Domain;
+using AutoMapper;
+using Infrastructure.Extensions;
 
 namespace Service.Users
 {
     public interface IUsersService
     {
         IQueryable ListUsers();
-        string GetUser(int id);
+        object GetUser(int id);
         object Login(User userinfo);
         object Register(User userinfo);
         object Delete(User userinfo);
@@ -23,12 +25,14 @@ namespace Service.Users
 
     public class UsersService: IUsersService
     {
-        private SimplogContext Context;
-        private IConfiguration Config;
-        public UsersService(SimplogContext context, IConfiguration config)
+        private readonly SimplogContext Context;
+        private readonly IConfiguration Config;
+        private readonly IMapper Mapper;
+        public UsersService(SimplogContext context, IConfiguration config, IMapper mapper)
         {
             Context = context;
             Config = config;
+            Mapper = mapper;
         }
 
         public IQueryable ListUsers()
@@ -36,10 +40,18 @@ namespace Service.Users
             return Context.Users.Select(user => new { id = user.Id, username = user.Username });
         }
 
-        public string GetUser(int id)
+        public object GetUser(int id)
         {
-            var userInfo = Context.Users.Find(id);
-            return userInfo.Username;
+            var userinfo = Context.Users.Find(id);
+
+            if (userinfo.IsNull())
+            {
+                return new { success = false, status = "User ID not found" };
+            }
+            else
+            {
+                return new { success = true, user = Mapper.Map<UserDto>(userinfo) };
+            }
         }
 
         public object Login(User userInfo)
@@ -86,7 +98,7 @@ namespace Service.Users
             Context.Users.Remove(user);
             Context.SaveChanges();
 
-            return new { success = true, username = user.Username, userId = user.Id };
+            return new { success = true, user = Mapper.Map<UserDto>(user) };
         }
 
         private User FindUserByUserInfo(User userInfo)

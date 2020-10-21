@@ -37,7 +37,7 @@ namespace SimplogApi.Controllers
 
         // GET: api/Users/Id/5
         [HttpGet("Id/{id}")]
-        public string GetUser([FromRoute] int id)
+        public object GetUser([FromRoute] int id)
         {
             return Service.GetUser(id);
         }

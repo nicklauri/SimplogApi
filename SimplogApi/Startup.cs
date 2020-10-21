@@ -17,6 +17,7 @@ using System.Text;
 using Domain;
 using Service.Users;
 using Service.Employees;
+using AutoMapper;
 
 namespace SimplogApi
 {
@@ -56,6 +57,16 @@ namespace SimplogApi
             services.AddScoped<IUsersService, UsersService>();
             services.AddScoped<IEmployeesService, EmployeesService>();
             services.AddDbContext<SimplogContext>(opt => opt.UseSqlServer(Configuration.GetConnectionString("Database")));
+
+            // Automapper configuration
+            var mapperConfig = new MapperConfiguration(mc =>
+            {
+                mc.AddProfile(new MappingProfile());
+            });
+
+            IMapper mapper = mapperConfig.CreateMapper();
+            services.AddSingleton(mapper);
+
             services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
         }
 

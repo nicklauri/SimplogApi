@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
+using Domain;
 
 namespace Infrastructure.Extensions
 {
@@ -20,6 +21,16 @@ namespace Infrastructure.Extensions
         public static bool IsNullOrEmpty(this object obj)
         {
             return obj == null;
+        }
+
+        public static bool IsNull(this User user)
+        {
+            return user == null;
+        }
+
+        public static bool IsNull(this Employee employee)
+        {
+            return employee == null;
         }
     }
 }
